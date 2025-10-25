@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Initialize Memory</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script>
+    async function initializeMemory() {
+      const size = document.getElementById("total-size").value;
+      if (!size || size <= 0) {
+        alert("Please enter a valid memory size.");
+        return;
+      }
+      const res = await fetch("/initialize", {
+        method: "POST",
+        body: new URLSearchParams({ total_size: size })
+      });
+      const data = await res.json();
+      if (data.success) {
+        window.location.reload();
+      } else {
+        alert("Initialization failed.");
+      }
+    }
+  </script>
+</head>
+<body>
+  <div class="container">
+    <h1>Dynamic Memory Allocation</h1>
+    <p>Enter total memory size to initialize. The system will create 3-5 random-sized free blocks that sum to this total:</p>
+    <input id="total-size" type="number" placeholder="e.g. 1000" min="100">
+    <br>
+    <small class="help-text">Example: If you enter 1000, you might get blocks like [200, 150, 400, 250]</small>
+    <button onclick="initializeMemory()">Initialize Memory</button>
+  </div>
+</body>
+</html>

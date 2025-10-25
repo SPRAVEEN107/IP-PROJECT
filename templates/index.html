@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dynamic Memory Manager</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script>
+    async function resetMemory() {
+      const res = await fetch("/reset", {
+        method: "POST"
+      });
+      if (res.ok) {
+        window.location.href = "/";
+      }
+    }
+
+    async function updateMemory() {
+      const res = await fetch("/memory_state");
+      const data = await res.json();
+
+      const container = document.getElementById("memory-bar");
+      container.innerHTML = "";
+
+      let total = data.blocks.reduce((max, b) => Math.max(max, b[1].start + b[1].size), 0);
+      data.blocks.forEach(([id, block]) => {
+        const div = document.createElement("div");
+        div.classList.add("block");
+        div.style.width = (block.size / total * 100) + "%";
+        div.style.backgroundColor = block.free ? "#5cb85c" : "#ff7070";
+        div.title = `ID: ${id} | Size: ${block.size} | ${block.free ? "Free" : "Allocated"}`;
+        // expose id in DOM for easier testing/automation
+        div.dataset.blockId = id;
+
+        // visible label so the ID is shown on the bar (not only on hover)
+        const label = document.createElement("span");
+        label.classList.add("label");
+        label.innerText = `ID:${id}`;
+        div.appendChild(label);
+
+        container.appendChild(div);
+      });
+
+      document.getElementById("stats").innerText =
+        `Allocated: ${data.total_allocated} | Free: ${data.total_free} | ` +
+        `Usage: ${data.usage_percent}%`;
+    }
+
+    async function allocate() {
+      const size = document.getElementById("alloc-size").value;
+      await fetch("/allocate", { method: "POST", body: new URLSearchParams({ size }) });
+      updateMemory();
+    }
+
+    async function deallocate() {
+      const id = document.getElementById("dealloc-id").value;
+      await fetch("/deallocate", { method: "POST", body: new URLSearchParams({ block_id: id }) });
+      updateMemory();
+    }
+
+    async function changeStrategy() {
+      const strategy = document.getElementById("strategy").value;
+      await fetch("/change_strategy", { method: "POST", body: new URLSearchParams({ strategy }) });
+      updateMemory();
+    }
+
+    window.onload = updateMemory;
+  </script>
+</head>
+<body>
+  <div class="container">
+    <h1>Dynamic Memory Allocation</h1>
+
+    <div id="memory-bar" class="memory-bar"></div>
+    <p id="stats">Loading...</p>
+
+    <div class="controls">
+      <input id="alloc-size" type="number" placeholder="Size to allocate">
+      <button onclick="allocate()">Allocate</button>
+
+      <input id="dealloc-id" type="number" placeholder="Block ID to free">
+      <button onclick="deallocate()">Deallocate</button>
+
+      <label for="strategy">Allocation Strategy:</label>
+      <select id="strategy" onchange="changeStrategy()">
+        <option value="best">Best-Fit</option>
+        <option value="worst">Worst-Fit</option>
+        <option value="first">First-Fit</option>
+      </select>
+
+      <button onclick="resetMemory()" class="reset-btn">Reset Memory</button>
+
+    </div>
+    
+    <!-- operation log removed -->
+  </div>
+
+  <footer class="footer">
+    <p>Dynamic Memory Allocation Simulator using C + Python Logic | Created by AI-SQUAD</p>
+  </footer>
+
+  <!-- toast removed -->
+</body>
+</html>

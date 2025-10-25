@@ -1,0 +1,209 @@
+import random
+from typing import Dict, List, Tuple, Optional
+from dataclasses import dataclass
+
+@dataclass
+class AllocationResult:
+    """Result of a memory allocation attempt."""
+    success: bool
+    start: Optional[int] = None
+    allocated_size: Optional[int] = None
+    chosen_block_size: Optional[int] = None
+    message: str = ""
+
+class MemoryBlock:
+    """Represents a block of memory with size, start position, and allocation status."""
+    def __init__(self, size: int, start: int, block_id: int, is_free: bool = True):
+        self.size = size
+        self.start = start
+        self.id = block_id
+        self.is_free = is_free
+        self.internal_frag = 0  # Track internal fragmentation
+
+    def __repr__(self):
+        status = "FREE" if self.is_free else "ALLOCATED"
+        return f"Block[{self.id}] @ {self.start} ({self.size} units) [{status}]"
+
+class MemoryManager:
+    """Manages memory allocation using various strategies."""
+    
+    def __init__(self, total_size: int):
+        """Initialize memory manager with total size."""
+        self.total_size = total_size
+        self.next_id = 1
+        self.blocks: Dict[int, MemoryBlock] = {}
+        self.init_free_space()
+        
+    def init_free_space(self) -> str:
+        """Initialize a single free block of total size."""
+        self.blocks.clear()
+        self.blocks[self.next_id] = MemoryBlock(self.total_size, 0, self.next_id)
+        self.next_id = 2
+        return f"Initialized single free block of {self.total_size} units"
+        
+    def create_random_free_blocks(self, count: int = 4) -> str:
+        """Split memory into count random-sized blocks."""
+        if count < 2:
+            return "Need at least 2 blocks to split"
+            
+        # Generate random proportions
+        proportions = [random.random() for _ in range(count - 1)]
+        total = sum(proportions)
+        proportions = [p/total for p in proportions]
+        
+        current_start = 0
+        remaining_size = self.total_size
+        new_blocks: Dict[int, MemoryBlock] = {}
+        
+        # Create blocks
+        for i in range(count):
+            if i < count - 1:
+                size = int(self.total_size * proportions[i])
+                size = max(size, 1)  # Ensure minimum size of 1
+            else:
+                size = remaining_size  # Last block gets remainder
+                
+            new_blocks[self.next_id] = MemoryBlock(size, current_start, self.next_id)
+            current_start += size
+            remaining_size -= size
+            self.next_id += 1
+            
+        self.blocks = new_blocks
+        return f"Created {count} random blocks"
+
+    def allocate(self, size: int, strategy: str = "best") -> AllocationResult:
+        """Allocate memory using specified strategy."""
+        if size <= 0:
+            return AllocationResult(False, message="Invalid size requested")
+            
+        # Get suitable free blocks
+        free_blocks = [(bid, block) for bid, block in self.blocks.items() 
+                      if block.is_free and block.size >= size]
+        
+        if not free_blocks:
+            return AllocationResult(False, message="No suitable free block found")
+            
+        # Select block based on strategy
+        if strategy == "best":
+            chosen = min(free_blocks, key=lambda x: x[1].size)
+        elif strategy == "worst":
+            chosen = max(free_blocks, key=lambda x: x[1].size)
+        elif strategy == "first":
+            chosen = min(free_blocks, key=lambda x: x[1].start)
+        else:
+            return AllocationResult(False, message="Invalid strategy")
+            
+        block_id, block = chosen
+        original_size = block.size
+        
+        # Split block if necessary
+        if block.size > size:
+            # Create new free block with remaining space
+            new_block = MemoryBlock(
+                block.size - size,
+                block.start + size,
+                self.next_id
+            )
+            self.blocks[self.next_id] = new_block
+            self.next_id += 1
+            
+            # Update original block
+            block.size = size
+            
+        block.is_free = False
+        block.internal_frag = block.size - size  # Track internal fragmentation
+        
+        return AllocationResult(
+            True,
+            block.start,
+            size,
+            original_size,
+            f"Allocated {size} units at position {block.start} (block size: {original_size})"
+        )
+
+    def deallocate(self, start: int) -> str:
+        """Deallocate block at given start position and merge with neighbors if possible."""
+        # Find block at start position
+        block = next((b for b in self.blocks.values() if b.start == start), None)
+        if not block:
+            return "No block found at specified position"
+        if block.is_free:
+            return "Block is already free"
+            
+        block.is_free = True
+        merged = self.coalesce()
+        return f"Deallocated block at position {start}" + \
+               f" (merged with neighbors: {'yes' if merged else 'no'})"
+        
+    def coalesce(self) -> bool:
+        """Merge adjacent free blocks. Returns True if any merging occurred."""
+        changed = False
+        while True:
+            blocks = sorted(self.blocks.items(), key=lambda x: x[1].start)
+            merged = False
+            
+            for i in range(len(blocks) - 1):
+                curr_id, curr = blocks[i]
+                next_id, next_block = blocks[i + 1]
+                
+                if curr.is_free and next_block.is_free:
+                    # Merge blocks
+                    curr.size += next_block.size
+                    del self.blocks[next_id]
+                    merged = True
+                    changed = True
+                    break
+                    
+            if not merged:
+                break
+                
+        return changed
+
+    def fragmentation_stats(self) -> Dict:
+        """Calculate memory fragmentation statistics."""
+        free_blocks = [b for b in self.blocks.values() if b.is_free]
+        allocated_blocks = [b for b in self.blocks.values() if not b.is_free]
+        
+        total_free = sum(b.size for b in free_blocks)
+        total_allocated = sum(b.size for b in allocated_blocks)
+        
+        if not free_blocks:
+            return {
+                "total_free": 0,
+                "num_free_blocks": 0,
+                "avg_free_block": 0,
+                "external_frag_percent": 0,
+                "internal_frag": sum(b.internal_frag for b in allocated_blocks)
+            }
+            
+        largest_free = max(b.size for b in free_blocks)
+        external_frag = sum(b.size for b in free_blocks if b.size < largest_free)
+        external_frag_percent = (external_frag / total_free * 100) if total_free > 0 else 0
+        
+        return {
+            "total_free": total_free,
+            "total_allocated": total_allocated,
+            "num_free_blocks": len(free_blocks),
+            "avg_free_block": total_free / len(free_blocks),
+            "external_frag_percent": round(external_frag_percent, 2),
+            "internal_frag": sum(b.internal_frag for b in allocated_blocks),
+            "usage_percent": round((total_allocated / self.total_size) * 100, 2)
+        }
+        
+    def snapshot(self) -> List[Dict]:
+        """Return current state of all memory blocks."""
+        return [
+            {
+                "id": b.id,
+                "start": b.start,
+                "size": b.size,
+                "free": b.is_free,
+                "internal_frag": b.internal_frag
+            }
+            for b in sorted(self.blocks.values(), key=lambda x: x.start)
+        ]
+
+    def reset(self) -> str:
+        """Reset memory to initial state with a single free block."""
+        self.next_id = 1
+        return self.init_free_space()
