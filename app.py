@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify, session
 from dynamic_memory import MemoryManager
+import os
 
 app = Flask(__name__)
 app.secret_key = "secure-session-key"
@@ -75,4 +76,5 @@ def memory_state():
     })
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
